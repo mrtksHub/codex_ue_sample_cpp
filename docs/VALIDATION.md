@@ -2,7 +2,8 @@
 
 ## 確認可能なこと
 
-- Blueprint版の設計書（docs/BLUEPRINT_SPEC.md）とC++のクラス/関数を対照。
+- [Blueprint版の設計書](https://github.com/mrtksHub/codex_ue_sample/blob/main/docs/BLUEPRINT_SPEC.md)とC++のクラス/関数を対照。
+- [CALL_FLOW.md](CALL_FLOW.md)の各ノードと現在存在するC++関数・WBP接続計画を静的に照合。
 - 1 GameInstance、共通基底GameModeと4子GameMode、独立した4 PlayerControllerを確認。
 - Ending → Openingへ戻ること、GameInstanceが遷移中フラグだけで重複を防止することをソースから確認。
 - WBPのボタンイベントはBPに残し、C++の呼び先をBlueprintCallableとして公開。
@@ -13,6 +14,7 @@
 - Editorで4 Mapと6 WBPを作成、または元のDesignerをMigrate。
 - 実際の元Blueprint Event Graphとの行単位の接続照合。
 - PIE/StandaloneのEsc優先順位、Focus、Confirm、Widget寿命を検証。
+- 特に、UIボタンがFocusを持つ状態のEsc、およびOpeningのAny Keyを実測して入力イベントの伝搬を確認。
 - Windows Packagingと実行確認。
 
 ## 受け入れ条件
@@ -38,5 +40,7 @@
 | Title/Game/Ending | Focusableなボタンにフォーカスされる |
 | GameInstance初期データ | GameState=Opening、CurrentChapter=0、各Structの初期値が一致 |
 | Windows Packaging | 4 Map/6 WBPが含まれ同じ挙動 |
+
+ビルドが通らない、またはBP画面操作が一致しない場合は**main上でも未検証として扱う**。C++ソースの静的整合はUE実行での完全等価を意味しない。
 
 検証時にUEバージョン、日時、実測結果と不具合を追記すること。
