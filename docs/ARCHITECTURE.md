@@ -3,7 +3,7 @@
 ## 基準
 
 参照元: `mrtksHub/codex_ue_sample` の `docs/BLUEPRINT_SPEC.md`。
-設計を整理し直さず、同じクラス分割と振る舞いを再現します。
+設計を整理し直さず、同じクラス分割と振る舞いを再現する方針です。UE上での完全等価は未検証です。
 実際の `.uasset` の全ノードをこの環境から実行したわけではないため、Blueprint実装との細部の照合はUE Editorで実施してください。
 
 ## クラス対応
@@ -50,6 +50,8 @@ Title/Game/Endingでも各ControllerのBeginPlayが対応する画面IDでNotify
 Game HUDのGame Clearは同様にGameInstance.GoToScreen(Ending)。EndingのFinishはGoToScreen(Opening)。
 GameModeは対応Controllerの選択のみを担当し、遷移ロジックを持ちません。
 
+実際の関数ごとの開始点・呼出し経路・UEエンジンによるイベント起動は [CALL_FLOW.md](CALL_FLOW.md) に図示しています。
+
 ## Pause / Confirm / Esc
 
 - TitleのEscまたはExit Game: ATitleController::RequestExitGameでConfirmを一つ生成。
@@ -76,7 +78,7 @@ ButtonのOnClickedグラフはBlueprintに残し、`ConfirmYes` / `ConfirmNo` �
 | Settings | FSampleSettings | 3つの音量=1.0 |
 | SaveData | FSampleSaveData | SaveVersion=1, SavedChapter=0, bHasSave=false |
 
-保存予定データはメモリ上のみ。新しいデータ通知、SaveGame永続化、遷移許可表、Map存在検証、独自の失敗時復元は追加しません。
+保存予定データはメモリ上のみ。新しいデータ通知（`OnDataChanged`）、`SetCurrentChapter`などのSetter、`OnModelChanged`、自動Text更新、SaveGame永続化、遷移許可表、Map存在検証、独自の失敗時復元は追加しません。BP側の表示は必要な場面で公開されたデータを読み取ります。
 
 ## 本版と元の実アセットとの境界
 
@@ -85,4 +87,4 @@ ButtonのOnClickedグラフはBlueprintに残し、`ConfirmYes` / `ConfirmNo` �
 - すべてのMapのGameMode Overrideは新しいC++クラスへ変更する必要があります。
 - C++コードだけでは元のWBP/Mapは生成されません。実アセットはEditorで作成・保存します。
 
-参考: [EDITOR_SETUP.md](EDITOR_SETUP.md)、[VALIDATION.md](VALIDATION.md)
+参考: [CALL_FLOW.md](CALL_FLOW.md)、[EDITOR_SETUP.md](EDITOR_SETUP.md)、[VALIDATION.md](VALIDATION.md)
