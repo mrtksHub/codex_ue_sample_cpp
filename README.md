@@ -1,7 +1,7 @@
 # codex_ue_sample_cpp
 
 Unreal Engine 5.8 の [codex_ue_sample](https://github.com/mrtksHub/codex_ue_sample) を **設計変更せずにC++へ移す**ためのプロジェクトです。
-管理処理はC++、Widgetの外観・ボタンイベントはWidget Blueprintに残します。
+管理処理はC++、Widgetの外観・ボタンイベントはWidget Blueprintに残します。動作の完全等価はUE Editorでの検証後に確定します。
 
 ## 参照元と同じ構成
 
@@ -10,7 +10,7 @@ Unreal Engine 5.8 の [codex_ue_sample](https://github.com/mrtksHub/codex_ue_sam
 - Controllerは共通化せず、4画面に対応するC++クラスを各々 APlayerController から直接派生させます。
 - 元のBlueprint版と同じく、GameModeが画面固有のControllerを選択します。
 - `GoToScreen`は遷移中フラグのみを確認し、遷移先は4画面のEnumから選びます。
-- 元のPause、Confirm、Esc優先順位、Focus、カーソル表示を維持します。
+- 元のPause、Confirm、Esc優先順位、Focus、カーソル表示を再現する実装です（UE上での実測検証は未完了）。
 - `CurrentChapter` / `PlayerData` / `Settings` / `SaveData` は元のBP_GameInstanceと同じメモリ上のデータです。
 
 ## C++とBlueprintの境界
@@ -34,6 +34,8 @@ Unreal Engine 5.8 の [codex_ue_sample](https://github.com/mrtksHub/codex_ue_sam
 - 元のBlueprintの詳細なノード接続は設計書を基準に移植しました。UE Editor内で最終照合してください。
 
 導入手順: [docs/EDITOR_SETUP.md](docs/EDITOR_SETUP.md)
+
+コールフロー・関数対応図: [docs/CALL_FLOW.md](docs/CALL_FLOW.md)
 
 クラスと処理対応: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
