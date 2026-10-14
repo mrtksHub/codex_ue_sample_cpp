@@ -1,0 +1,9 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.8",
+  "Category": "Samples",
+  "Description": "C++ game flow with Blueprint presentation. See docs/EDITOR_SETUP.md before running.",
+  "Modules": [
+    { "Name": "ScreenFlow", "Type": "Runtime", "LoadingPhase": "Default" }
+  ]
+}
