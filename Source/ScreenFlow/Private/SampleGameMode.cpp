@@ -1,35 +1,31 @@
 #include "SampleGameMode.h"
-#include "SamplePlayerController.h"
-#include "SampleScreenWidget.h"
 
-ASampleGameMode::ASampleGameMode()
+#include "OpeningController.h"
+#include "TitleController.h"
+#include "GameController.h"
+#include "EndingController.h"
+
+ASampleGameModeBase::ASampleGameModeBase()
 {
     DefaultPawnClass = nullptr;
-    PlayerControllerClass = ASamplePlayerController::StaticClass();
-    PauseWidgetClass = TSoftClassPtr<USampleScreenWidget>(FSoftObjectPath(TEXT("/Game/UI/Common/WBP_PauseMenu.WBP_PauseMenu_C")));
-    ConfirmWidgetClass = TSoftClassPtr<USampleScreenWidget>(FSoftObjectPath(TEXT("/Game/UI/Common/WBP_ConfirmDialog.WBP_ConfirmDialog_C")));
 }
 
-ASampleOpeningGameMode::ASampleOpeningGameMode()
+AOpeningGameMode::AOpeningGameMode()
 {
-    Screen = ESampleScreen::Opening;
-    ScreenWidgetClass = TSoftClassPtr<USampleScreenWidget>(FSoftObjectPath(TEXT("/Game/UI/Opening/WBP_Opening.WBP_Opening_C")));
+    PlayerControllerClass = AOpeningController::StaticClass();
 }
 
-ASampleTitleGameMode::ASampleTitleGameMode()
+AMainTitleGameMode::AMainTitleGameMode()
 {
-    Screen = ESampleScreen::MainTitle;
-    ScreenWidgetClass = TSoftClassPtr<USampleScreenWidget>(FSoftObjectPath(TEXT("/Game/UI/MainTitle/WBP_MainTitle.WBP_MainTitle_C")));
+    PlayerControllerClass = ATitleController::StaticClass();
 }
 
-ASampleGameGameMode::ASampleGameGameMode()
+AGameGameMode::AGameGameMode()
 {
-    Screen = ESampleScreen::Game;
-    ScreenWidgetClass = TSoftClassPtr<USampleScreenWidget>(FSoftObjectPath(TEXT("/Game/UI/Game/WBP_GameHUD.WBP_GameHUD_C")));
+    PlayerControllerClass = AGameController::StaticClass();
 }
 
-ASampleEndingGameMode::ASampleEndingGameMode()
+AEndingGameMode::AEndingGameMode()
 {
-    Screen = ESampleScreen::Ending;
-    ScreenWidgetClass = TSoftClassPtr<USampleScreenWidget>(FSoftObjectPath(TEXT("/Game/UI/Ending/WBP_Ending.WBP_Ending_C")));
+    PlayerControllerClass = AEndingController::StaticClass();
 }
