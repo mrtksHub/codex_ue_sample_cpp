@@ -1,49 +1,46 @@
-# 検証状況と受け入れ確認
+# Blueprint等価移植: 検証記録
 
-## 作成環境で確認したこと
+## 確認可能なこと
 
-- プロジェクト定義のJSON構文とRuntime Module / Target / APIマクロ名の整合。
-- 設定、C++の4 Map名、設計書のMap名の一致。
-- 6 Widgetパスと導入手順の一致。
-- ボタン名とC++接続先、Blueprint公開コマンドの対応。
-- 差分の空白エラー、生成物や秘密設定を含めていないこと。
+- [Blueprint版の設計書](https://github.com/mrtksHub/codex_ue_sample/blob/main/docs/BLUEPRINT_SPEC.md)とC++のクラス/関数を対照。
+- [CALL_FLOW.md](CALL_FLOW.md)の各ノードと現在存在するC++関数・WBP接続計画を静的に照合。
+- 1 GameInstance、共通基底GameModeと4子GameMode、独立した4 PlayerControllerを確認。
+- Ending → Openingへ戻ること、GameInstanceが遷移中フラグだけで重複を防止することをソースから確認。
+- WBPのボタンイベントはBPに残し、C++の呼び先をBlueprintCallableとして公開。
 
-**上記は静的な確認です。UHT・C++コンパイル・Editor動作を保証するものではありません。**
+## 未実施（必須）
 
-## 未実施
+- UE 5.8のUHTとDevelopment Editor / Win64ビルド。
+- Editorで4 Mapと6 WBPを作成、または元のDesignerをMigrate。
+- 実際の元Blueprint Event Graphとの行単位の接続照合。
+- PIE/StandaloneのEsc優先順位、Focus、Confirm、Widget寿命を検証。
+- 特に、UIボタンがFocusを持つ状態のEsc、およびOpeningのAny Keyを実測して入力イベントの伝搬を確認。
+- Windows Packagingと実行確認。
 
-- UE 5.8のUHTとC++ビルド。
-- Map / Widget Blueprintの作成、CompileとSave。
-- PIE / Standaloneでの動作。
-- Windowsパッケージの作成と実行。
+## 受け入れ条件
 
-## Editor環境での受け入れ確認
-
-| 操作・条件 | 期待する結果 |
+| 操作 | 期待結果（元Blueprint版に準拠） |
 | --- | --- |
-| Openingでキー / マウスクリック | MainTitleへ1回だけ進む |
-| Start → Game Clear → Finish | Game → Ending → MainTitleの順。Openingには戻らない |
-| Start / Game Clear / Finishを連打 | 遷移の多重実行なし |
-| MainTitleでExit Game / Esc | Confirmが1つだけ開く |
-| TitleのConfirmでNo / Esc | Titleへ戻る |
-| GameでEsc | Pauseが開き、ゲームが停止 |
-| PauseでResume / Esc | Pauseが閉じ、ゲームが再開 |
-| PauseでReturn to Title | Confirmが開く |
-| Pause上のConfirmでNo / Esc | Confirmだけが閉じ、Pauseを維持 |
-| Return to TitleのYes | Pauseを解除しMainTitleへ |
-| Title / PauseのExit Game → Yes | Standalone / Packageで終了 |
-| Confirm中に背景のボタンをクリック | 下層の操作は実行されない |
-| Escを押し続ける | リピートで複数階層を戻らない |
-| Game → Title → Gameを繰り返す | 古いWidgetやPause状態が残らない |
-| 各Mapを直接PIEで開始 | Mapに対応するCurrentScreenで起動 |
-| MapとGameModeが不一致 | Output Logへエラー。誤った画面進行をしない |
-| 遷移先Mapを一時的に別名へ変更 | 遷移要求を拒否し元の画面を維持 |
-| TravelFailure通知 | 遷移ロック解除、元の画面とPause操作を復元 |
-| GameでSetPlayerData / SetCurrentChapterを実行 | 初期表示に加え、変更した値が通知で表示される |
-| Controller / WidgetのFocus | Non-Focusable widgetの警告が出ない |
-| Windowsパッケージ | 4 Map、6 WBPがCookされ、一周とPause/終了が動く |
+| L_Opening起動 | Opening画面とカーソルが表示される |
+| OpeningでAny Key | MainTitleに1回だけ遷移 |
+| MainTitle Start | Gameへ遷移 |
+| Game Game Clear | Endingへ遷移 |
+| Ending Finish | **Openingへ戻る** |
+| Openingへ戻った後Any Key | 再びMainTitleへ進める |
+| ボタン連打 | GameInstanceの遷移中ロックが重複を防ぐ |
+| MainTitle Exit/Esc | Confirm Dialogが1つ開く |
+| TitleのConfirm No/Esc | MainTitleへ戻りExitしない |
+| GameのEsc | Pause Menuが開きGamePaused=true |
+| PauseのEsc/Resume | Pause Menuを閉じGamePaused=false |
+| PauseのReturn to Title | Confirmを表示 |
+| PauseのConfirm No/Esc | Confirmだけ閉じPauseを維持 |
+| Return to Title Yes | Pause解除 → MainTitle |
+| PauseのExit Game Yes | Pause解除 → QuitGame |
+| Confirm表示中Esc | 下位のPauseやGameまで一度に戻らない |
+| Title/Game/Ending | Focusableなボタンにフォーカスされる |
+| GameInstance初期データ | GameState=Opening、CurrentChapter=0、各Structの初期値が一致 |
+| Windows Packaging | 4 Map/6 WBPが含まれ同じ挙動 |
 
-初期Game画面には動くゲームオブジェクトがありません。停止の確認は`Is Game Paused`で行い、
-必要なら一時的な回転ActorなどでTickの停止も確認してください。
-Setterの確認は一時的なテスト用ActorやBlueprint呼び出しから行い、OnModelChanged内ではSetterを呼ばないでください。
-実施後、この文書にUE版、ビルド構成、結果と未解決項目を追記してください。
+ビルドが通らない、またはBP画面操作が一致しない場合は**main上でも未検証として扱う**。C++ソースの静的整合はUE実行での完全等価を意味しない。
+
+検証時にUEバージョン、日時、実測結果と不具合を追記すること。

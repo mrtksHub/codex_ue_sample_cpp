@@ -1,243 +1,200 @@
-# コールフローと処理フロー
+# CALL_FLOW: Blueprint版と等価なC++画面遷移
 
-この図は登録済みC++ソースの静的な読み取りに基づきます。UEでの実行トレースではありません。
-MapとWidget BlueprintはEditorで作成する必要があります。
+この文書は、[元のBlueprint版の仕様書](https://github.com/mrtksHub/codex_ue_sample/blob/main/docs/BLUEPRINT_SPEC.md)と本リポジトリのC++コードを突き合わせて、**エンジンが起動するイベント、C++の直接呼び出し、Widget Blueprintのイベント**を区別したものです。
 
-## ソースと略号
+- **設計基準**: `Opening → MainTitle → Game → Ending → Opening`。GameのPauseメニューからはMainTitleへ戻れる。
+- **実装方針**: 4つのControllerは独立した`APlayerController`の子クラス。画面ごとのGameModeがそれぞれを指定する。
+- **確認範囲**: C++ソースの静的照合。元の`.uasset`の全ノード比較、UE 5.8ビルドと実行トレースは未実施。
+- Mermaidの`UE -> Controller.BeginPlay`などはエンジンによるイベント呼び出しであり、`OpenLevel`から同期的にBeginPlayが呼ばれることを意味しない。
 
-| 略号 | ソース | クラスと役割 |
+## 1. クラスとファイルの一対一対応
+
+| 元のBlueprint | C++クラス・主な関数 | ソース |
 | --- | --- | --- |
-| GI | [SampleGameInstance.cpp](../Source/ScreenFlow/Private/SampleGameInstance.cpp) | USampleGameInstance: 状態、遷移、共通データ |
-| PC | [SamplePlayerController.cpp](../Source/ScreenFlow/Private/SamplePlayerController.cpp) | ASamplePlayerController: 入力、画面生成、Pauseと確認 |
-| W | [SampleScreenWidget.cpp](../Source/ScreenFlow/Private/SampleScreenWidget.cpp) | USampleScreenWidget: ボタン接続、表示更新 |
-| GM | [SampleGameMode.cpp](../Source/ScreenFlow/Private/SampleGameMode.cpp) | ASampleGameModeと4子クラス: 画面構成 |
-| 型 | [SampleTypes.h](../Source/ScreenFlow/Public/SampleTypes.h) | 画面・確認Enum、データStruct |
-| BP | Editorで作成するWBP_* | 見た目とOnModelChangedの表示処理 |
-| UE | Unreal Engine | Level遷移、ライフサイクル、Widget構築 |
+| `BP_GameInstance` | `USampleGameInstance::GoToScreen` / `NotifyScreenReady` / `MapPackage` | [SampleGameInstance.cpp](../Source/ScreenFlow/Private/SampleGameInstance.cpp) |
+| `BP_GameModeBase`と4子BP | `ASampleGameModeBase`と`AOpeningGameMode` / `AMainTitleGameMode` / `AGameGameMode` / `AEndingGameMode`の各コンストラクター | [SampleGameMode.cpp](../Source/ScreenFlow/Private/SampleGameMode.cpp) |
+| `BP_OpeningController` | `AOpeningController::BeginPlay` / `SetupInputComponent` / `HandleAnyKey` / `EndPlay` | [OpeningController.cpp](../Source/ScreenFlow/Private/OpeningController.cpp) |
+| `BP_TitleController` | `ATitleController::BeginPlay` / `SetupInputComponent` / `RequestExitGame` / `HandleEscape` / `HandleExitConfirmed` / `HandleExitCancelled` / `FocusTopWidget` / `EndPlay` | [TitleController.cpp](../Source/ScreenFlow/Private/TitleController.cpp) |
+| `BP_GameController` | `AGameController::BeginPlay` / `SetupInputComponent` / `HandleEscape` / `ShowPauseMenu` / `ResumeGame` / `ShowConfirmDialog` / `HandleConfirmAccepted` / `HandleConfirmCancelled` / `FocusTopWidget` / `EndPlay` | [GameController.cpp](../Source/ScreenFlow/Private/GameController.cpp) |
+| `BP_EndingController` | `AEndingController::BeginPlay` / `EndPlay` | [EndingController.cpp](../Source/ScreenFlow/Private/EndingController.cpp) |
+| `WBP_ConfirmDialog`のイベントDispatcher | `USampleConfirmDialogWidget::ConfirmYes` / `ConfirmNo` / `SetConfirmMessage` | [SampleConfirmDialogWidget.cpp](../Source/ScreenFlow/Private/SampleConfirmDialogWidget.cpp) |
+| `E_ScreenState` / 構造体 | `ESampleScreen` / `FSamplePlayerData` / `FSampleSettings` / `FSampleSaveData` | [SampleTypes.h](../Source/ScreenFlow/Public/SampleTypes.h) |
 
-図のPC / GI / Wは上表のソースを表します。UE経由の呼び出しはC++からの直接呼び出しと区別します。
-OpenLevelは遷移を要求します。呼び出した場所から次のBeginPlayへ直ちに関数呼び出しが続くわけではありません。
+`SamplePlayerController`と`SampleScreenWidget`は旧C++案から削除済み。`StartGame`、`ClearGame`、`FinishEnding`というC++関数も**現構成には存在しない**。これらのボタンは、元のBP版と同様、WBPの`OnClicked`から直接`GameInstance.GoToScreen`へつなぐ。
 
-## 1. 起動と画面構築
+## 2. UE起動 → Opening画面構築
 
-GameInstanceはInitでTravelFailure通知を購読し、Shutdownで解除します。
-画面とWidgetの組み合わせはGMの各コンストラクターで指定済みです。
-SetupInputComponentでEsc / AnyKeyを接続します。以下の図はLevel開始後の画面構築の順序です。
+`DefaultEngine.ini`の`GameInstanceClass=/Script/ScreenFlow.SampleGameInstance`および各MapのGameMode設定を使用する。`USampleGameInstance`には独自`Init()`オーバーライドはなく、GameInstance自体の生成・初期化はエンジン担当。
+
+`AOpeningGameMode`のコンストラクターは`PlayerControllerClass = AOpeningController::StaticClass()`を指定する。他の3 Mapもそれぞれ異なるControllerを指定する。
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant UE as Unreal Engine
-    participant PC as SamplePlayerController.cpp
-    participant GI as SampleGameInstance.cpp
-    participant W as SampleScreenWidget.cpp
-    participant BP as Widget Blueprint
-    UE->>PC: BeginPlay()
-    PC->>PC: Model()でGI取得、GameMode取得
-    PC->>GI: NotifyScreenReady(Mode.Screen)
-    GI->>GI: MapPackage()と現在Mapを照合
-    GI->>GI: CurrentScreen更新、遷移ロック解除
-    GI->>GI: OnDataChanged.Broadcast()
-    GI-->>PC: true
-    PC->>UE: SetGamePaused(false)
-    PC->>GI: OnDataChangedへSyncFlowAvailabilityを登録
-    PC->>PC: CreateView(ScreenWidgetClass, 0)
-    PC->>UE: LoadSynchronous / CreateWidget / AddToViewport
-    UE->>W: NativeConstruct()
-    W->>W: ボタン接続とOnDataChanged購読
-    W->>W: RefreshFromModel()
-    W->>BP: OnModelChanged(Model)
-    PC->>PC: FocusTopWidget()
+    participant GM as AOpeningGameMode
+    participant PC as AOpeningController.cpp
+    participant GI as USampleGameInstance.cpp
+    participant BP as WBP_Opening
+    UE->>GI: GameInstance生成・エンジン標準初期化
+    UE->>UE: L_Openingをロード
+    UE->>GM: GameMode選択・生成
+    Note over GM: PlayerControllerClass = AOpeningController
+    UE->>PC: PlayerController生成・BeginPlay()
+    PC->>UE: Super::BeginPlay()
+    PC->>GI: NotifyScreenReady(Opening)
+    GI->>GI: GameState=Opening
+    GI->>GI: bTransitionInProgress=false
+    PC->>PC: bShowMouseCursor=true
+    PC->>UE: OpeningWidgetClass.LoadSynchronous()
+    PC->>UE: CreateWidget(WBP_Opening)
+    PC->>UE: AddToViewport()
+    UE->>BP: UMG側の通常ライフサイクル
+    PC->>UE: SetInputMode(GameAndUI)
 ```
 
-NotifyScreenReadyの通知時点では、新しい画面のWはまだ購読していません。
-そのためNativeConstructでRefreshFromModelを明示的に呼び、初期値を表示します。
-この一度の初期更新が、最初の表示を成立させます。
+各Controllerの`SetupInputComponent()`では`Super::SetupInputComponent()`に続いて、OpeningのAnyKey、Title/GameのEscape入力を個別登録する。UEの入力初期化経路から呼ばれるもので、`BeginPlay()`の内部で`SetupInputComponent()`を直接呼んでいるわけではない。
 
-## 2. Startを押した場合のコールフロー
+## 3. MainTitleのStart → Game
+
+ボタンの`OnClicked`はWBPのグラフで実装し、C++へ自動バインドしない。
 
 ```mermaid
 sequenceDiagram
-    participant BP as WBP_MainTitle
-    participant W as SampleScreenWidget.cpp
-    participant PC as SamplePlayerController.cpp
-    participant GI as SampleGameInstance.cpp
+    autonumber
+    participant BP as WBP_MainTitle (Blueprint)
+    participant GI as USampleGameInstance.cpp
     participant UE as Unreal Engine
-    Note over W,PC: NativeConstructでBtn_StartをStartGameへ接続済み
-    BP->>PC: Btn_Start.OnClicked → StartGame()
-    PC->>PC: CanUseScreen(MainTitle)
-    PC->>PC: TravelTo(Game)
-    PC->>GI: GoToScreen(Game)
-    GI->>GI: 遷移ロックと許可経路を確認
-    GI->>GI: MapPackage(Game)、Map存在確認
-    GI->>GI: PendingScreen=Game、遷移ロック取得
-    GI->>UE: SetGamePaused(false)
-    GI->>UE: OpenLevel(L_Game)
-    GI-->>PC: true（要求受理）
-    PC->>PC: SyncFlowAvailability() → FocusTopWidget()
-    Note over PC: 遷移前のUIを操作不可にする
-    Note over PC,UE: 以降はUEが遷移を進める。直接の関数呼び出しではない
-    UE->>PC: 旧ControllerのEndPlay()
-    PC->>PC: 通知解除、CleanupUI()
-    UE->>PC: 新ControllerのBeginPlay()
-    PC->>GI: NotifyScreenReady(Game)
-    GI->>GI: CurrentScreen=Game、ロック解除、通知
-    PC->>PC: CreateView(WBP_GameHUD, 0)
-    PC->>UE: Widget生成とViewport追加
-    UE->>W: NativeConstruct() → RefreshFromModel()
-    PC->>PC: FocusTopWidget()
-```
-
-OnClickedの接続先はPCです。クリックのたびにWの中継関数を呼ぶ構造ではありません。
-Wは構築時に接続を準備します。新旧PCは同じクラスですが別インスタンスです。
-
-## 3. 画面遷移の処理フロー
-
-```mermaid
-flowchart TD
-    A["PC: StartGame / ClearGame / FinishEnding"] --> B{"PC: CanUseScreenで操作可能か"}
-    B -->|いいえ| R["要求を実行しない"]
-    B -->|はい| C["PC: TravelTo(Target)"]
-    C --> D["GI: GoToScreen(Target)"]
-    D --> E{"Worldがあり、遷移中ではないか"}
-    E -->|いいえ| R
-    E -->|はい| F{"許可経路か、Mapが存在するか"}
-    F -->|いいえ| R
-    F -->|はい| G["GI: PendingScreen設定、遷移ロック取得"]
-    G --> H["GI: Pause解除、OpenLevel"]
-    H --> I["PC: SyncFlowAvailabilityでUIを無効化"]
-    I --> J{"UE: Level遷移の結果"}
-    J -->|成功| K["旧PC: EndPlay → CleanupUI"]
-    K --> L["新PC: BeginPlay → GI: NotifyScreenReady"]
-    L --> M{"Mapと画面IDが一致するか"}
-    M -->|はい| N["GI: CurrentScreen更新、ロック解除"]
-    N --> O["PC: CreateView → FocusTopWidget"]
-    M -->|いいえ| X["GI: エラーログ、BeginPlayの初期化を中止"]
-    J -->|TravelFailure通知| P["GI: HandleTravelFailure → ロック解除と通知"]
-    P --> Q["PC: SyncFlowAvailability → UIと元のPauseを復元"]
-```
-
-Map/GameMode不一致は設定エラーです。自動修復する処理はありません。
-TravelFailureは当該GameInstanceのWorldからの通知を処理します。全てのロード障害に対する復帰を保証するものではありません。
-GoToScreenの許可経路チェックと、PCのUI操作可否チェックは別です。通常のUI操作はPCのコマンドから呼びます。
-
-## 4. Escの処理フロー
-
-UIにFocusがある場合はWのNativeOnPreviewKeyDownからPCのHandleUIKeyを呼びます。
-Focusがない場合はPCのSetupInputComponentで登録したEscバインドがHandleEscapeを呼びます。
-UIで処理済みのキーはFReply::Handledで消費し、リピートによる再操作も抑えます。
-
-```mermaid
-flowchart TD
-    A["Esc入力"] --> B["PC: HandleEscape()"]
-    B --> C{"遷移中、Modelなし、画面なし"}
-    C -->|はい| Z["処理終了"]
-    C -->|いいえ| D{"ConfirmWidgetがあるか"}
-    D -->|はい| E["PC: ConfirmNo → FocusTopWidget"]
-    E --> Z
-    D -->|いいえ| F{"PauseWidgetがあるか"}
-    F -->|はい| G["PC: ResumeGame → Pause解除とFocus復帰"]
-    G --> Z
-    F -->|いいえ| H{"CurrentScreen"}
-    H -->|Game| I["PC: OpenPauseMenu → CreateView、Pause開始"]
-    H -->|MainTitle| J["PC: RequestQuitGame → OpenConfirm"]
-    H -->|Opening| K["PC: HandleAnyKey → TravelTo(MainTitle)"]
-    H -->|Ending| Z
-    I --> Z
-    J --> Z
-    K --> Z
-```
-
-いずれか1つの操作をしたらreturnします。Confirmから同じEscでGameまで戻りません。
-
-## 5. Pauseからタイトルへ戻るコールフロー
-
-以下はPauseが開いている状態からです。各ボタンはWのNativeConstructでPCの対応関数へ接続済みです。
-
-```mermaid
-sequenceDiagram
-    participant BP as Widget Blueprint
-    participant PC as SamplePlayerController.cpp
-    participant W as SampleScreenWidget.cpp
-    participant GI as SampleGameInstance.cpp
-    BP->>PC: Btn_ReturnToTitle → RequestReturnToTitle()
-    PC->>PC: OpenConfirm(ReturnToTitle)
-    PC->>PC: CreateView(ConfirmWidgetClass, 200)
-    Note over PC,W: UE経由でNativeConstructが実行される
-    PC->>W: SetConfirmMessage()
-    PC->>PC: FocusTopWidget()
-    Note over PC: 元のPauseを維持し、下層UIを無効化
-    alt NoまたはEsc
-        BP->>PC: ConfirmNo()
-        PC->>PC: Confirmを削除、PendingConfirm解除
-        PC->>PC: FocusTopWidget()でPauseへ
-    else Yes
-        BP->>PC: ConfirmYes()
-        PC->>PC: TravelTo(MainTitle)
-        PC->>GI: GoToScreen(MainTitle)
-        GI->>GI: 検査、ロック取得、Pause解除、OpenLevel
-        GI-->>PC: 要求の受理結果
-        Note over PC: 受理時は遷移、拒否時はConfirmとPauseを維持
-    end
-```
-
-終了確認のYesはConfirmYesのQuitGame分岐です。
-Pause解除 → ConfirmNo → 必要ならResumeGame → UKismetSystemLibrary::QuitGameの順に実行します。
-No / EscではQuitGameを呼びません。
-
-## 6. 管理データからBlueprint表示へのコールフロー
-
-```mermaid
-sequenceDiagram
-    participant Caller as データを変更する処理
-    participant GI as SampleGameInstance.cpp
-    participant PC as SamplePlayerController.cpp
-    participant W as SampleScreenWidget.cpp
-    participant BP as Widget Blueprint
-    Caller->>GI: SetCurrentChapter(3)
-    GI->>GI: 値の補正、CurrentChapter更新
-    GI->>GI: OnDataChanged.Broadcast()
-    par 登録済みPCの購読処理
-        GI->>PC: SyncFlowAvailability()
+    participant GM as AGameGameMode
+    participant PC as AGameController.cpp
+    participant HUD as WBP_GameHUD (Blueprint)
+    BP->>BP: Btn_Start.OnClicked
+    BP->>GI: GoToScreen(Game)
+    GI->>GI: bTransitionInProgress確認
+    alt 遷移中
+        GI-->>BP: return
+    else 遷移中ではない
+        GI->>GI: MapPackage(Game) → /Game/Maps/L_Game
+        GI->>GI: bTransitionInProgress=true
+        GI->>UE: UGameplayStatics::OpenLevel(L_Game)
+        Note over UE: 以後のLevel切替はエンジンによる<br/>非同期的なライフサイクル
+        UE->>GM: L_GameのGameMode選択・生成
+        Note over GM: PlayerControllerClass = AGameController
+        UE->>PC: 新ControllerのBeginPlay()
+        PC->>GI: NotifyScreenReady(Game)
+        GI->>GI: GameState=Game / bTransitionInProgress=false
+        PC->>UE: CreateWidget(WBP_GameHUD)
+        PC->>UE: AddToViewport()
+        UE->>HUD: Widgetの構築・表示
         PC->>PC: FocusTopWidget()
-    and 登録済みWidgetの購読処理
-        GI->>W: RefreshFromModel()
-        W->>W: 名前付きTextBlockをSetText
-        W->>BP: OnModelChanged(Model)
-        BP->>BP: 任意の画像・文字・色を更新
     end
 ```
 
-parは同じ通知に複数の購読先があることを示します。別スレッドで並列実行する意味ではありません。
-購読先の実行順に依存した表示処理は作らないでください。
-SetPlayerData / SetSettingsも同じ通知経路です。
-OnModelChangedは表示を更新するためのイベントです。この中で同じSetterを呼び続けると通知が再帰します。
+Title → Game以外の画面切替も、呼び出し元WBPと`Target`を変えるだけ。
 
-## 7. ボタンと呼び出し先
+| 開始操作（Blueprintまたは入力） | 直接呼び出す関数 | Target |
+| --- | --- | --- |
+| OpeningでAny Key | `AOpeningController::HandleAnyKey()` → `GoToScreen` | MainTitle |
+| MainTitleの`Btn_Start.OnClicked` | `USampleGameInstance::GoToScreen` | Game |
+| Gameの`Btn_GameClear.OnClicked` | `USampleGameInstance::GoToScreen` | Ending |
+| Endingの`Btn_Finish.OnClicked` | `USampleGameInstance::GoToScreen` | **Opening** |
+| PauseのReturn to Title確認Yes | `AGameController::HandleConfirmAccepted` → `GoToScreen` | MainTitle |
 
-接続コードはすべてWのNativeConstructにあります。PCのコマンドが管理処理の入口です。
+## 4. GoToScreenとNotifyScreenReadyの処理フロー
 
-| Widget | Button | PCの関数 | 結果 |
-| --- | --- | --- | --- |
-| WBP_MainTitle | Btn_Start | StartGame | Gameへ |
-| WBP_MainTitle | Btn_ExitGame | RequestQuitGame | 終了確認 |
-| WBP_GameHUD | Btn_GameClear | ClearGame | Endingへ |
-| WBP_Ending | Btn_Finish | FinishEnding | MainTitleへ |
-| WBP_PauseMenu | Btn_Resume | ResumeGame | 再開 |
-| WBP_PauseMenu | Btn_ReturnToTitle | RequestReturnToTitle | タイトル復帰確認 |
-| WBP_PauseMenu | Btn_ExitGame | RequestQuitGame | 終了確認 |
-| WBP_ConfirmDialog | Btn_Yes | ConfirmYes | 確認内容を実行 |
-| WBP_ConfirmDialog | Btn_No | ConfirmNo | 確認だけ閉じる |
+この処理は[SampleGameInstance.cpp](../Source/ScreenFlow/Private/SampleGameInstance.cpp)に対応する。元BP同様、`GoToScreen`で「遷移元から遷移先へ進めるか」の追加許可表やMapファイル存在チェックは行わない。
 
-Opening → MainTitleの入口はHandleAnyKeyです。
-ゲーム開始、クリア、Ending終了はそれぞれStartGame / ClearGame / FinishEndingですが、
-TravelTo以降の遷移手順は共通です。
+```mermaid
+flowchart TD
+    A["GoToScreen(Target)"] --> B{"bTransitionInProgress?"}
+    B -->|"true"| Z["return"]
+    B -->|"false"| C["MapPackage(Target)"]
+    C --> D{"LevelName == NAME_None?"}
+    D -->|"yes"| Z
+    D -->|"no"| E["bTransitionInProgress = true"]
+    E --> F["UGameplayStatics::OpenLevel(this, LevelName)"]
+    F -.-> G["UEエンジンがLevel遷移"]
+    G -.-> H["遷移先Controller::BeginPlay()"]
+    H --> I["NotifyScreenReady(Screen)"]
+    I --> J["GameState = Screen"]
+    J --> K["bTransitionInProgress = false"]
+```
 
-## 読む順序
+`NotifyScreenReady`は各Controllerの`BeginPlay`から呼び出す。`OpenLevel`の失敗時のロック解除や`TravelFailure`購読は追加していないため、存在しないMapなどに遷移した場合の復元は保証していない。これは改善すべき余地ではあるものの、今回の既存BP等価移植の範囲外。
 
-1. PCのStartGame / CanUseScreen / TravelTo。
-2. GIのGoToScreen / MapPackage / NotifyScreenReady。
-3. PCのBeginPlay / CreateView / EndPlay / CleanupUI。
-4. WのNativeConstruct / RefreshFromModel。
-5. PCのHandleEscape / OpenPauseMenu / OpenConfirm / ConfirmYes / ConfirmNo。
+## 5. Esc → Pause → Confirm のフロー
 
-この順で読むと、操作、遷移、画面構築、表示更新、補助UIの順に理解できます。
+TitleとGameで**別々のController**が入力を処理する。
+
+```mermaid
+flowchart TD
+    T["Title: Esc"] --> T1["ATitleController::HandleEscape()"]
+    T1 --> T2{"ConfirmWidgetあり?"}
+    T2 -->|"yes"| T3["HandleExitCancelled()"]
+    T2 -->|"no"| T4["RequestExitGame()"]
+    T4 --> T5["WBP_ConfirmDialog生成、OnConfirmed / OnCancelled登録"]
+    G["Game: Esc"] --> G1["AGameController::HandleEscape()"]
+    G1 --> G2{"ConfirmWidgetあり?"}
+    G2 -->|"yes"| G3["HandleConfirmCancelled()"]
+    G2 -->|"no"| G4{"PauseWidgetあり?"}
+    G4 -->|"yes"| G5["ResumeGame()"]
+    G4 -->|"no"| G6["ShowPauseMenu() / SetGamePaused(true)"]
+```
+
+GameのEscapeバインディングは`SetupInputComponent()`内で`bExecuteWhenPaused=true`に設定する。**Confirm → Pause → Game**の優先順位は`HandleEscape`内の`return`で保証する。
+
+### PauseのReturn to TitleでYesを押した場合
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Pause as WBP_PauseMenu (BP)
+    participant PC as AGameController.cpp
+    participant Dialog as WBP_ConfirmDialog (BP)
+    participant Native as USampleConfirmDialogWidget.cpp
+    participant GI as USampleGameInstance.cpp
+    participant UE as Unreal Engine
+    Pause->>PC: Btn_ReturnToTitle.OnClicked → RequestReturnToTitle()
+    PC->>PC: ShowConfirmDialog(ReturnToTitle)
+    PC->>UE: CreateWidget(WBP_ConfirmDialog)
+    PC->>Native: SetConfirmMessage("Return to title?")
+    PC->>UE: AddToViewport(200)
+    PC->>PC: FocusTopWidget() (Pauseは維持)
+    Dialog->>Native: Btn_Yes.OnClicked → ConfirmYes()
+    Native->>Native: OnConfirmed.Broadcast()
+    Native->>PC: HandleConfirmAccepted()
+    PC->>UE: SetGamePaused(false)
+    PC->>GI: GoToScreen(MainTitle)
+    GI->>UE: OpenLevel(L_MainTitle)
+```
+
+Noボタンは`WBP_ConfirmDialog`の`OnClicked`から`USampleConfirmDialogWidget::ConfirmNo()`を呼ぶ。そこから`OnCancelled.Broadcast()`を経て、Titleでは`ATitleController::HandleExitCancelled()`、Gameでは`AGameController::HandleConfirmCancelled()`が呼ばれる。Game側のCancelではPauseは解除しない。
+
+Exit GameのYesでは`UKismetSystemLibrary::QuitGame()`を呼ぶ。TitleのExitとPauseからのExitで解除処理は異なるため、実装ファイルをそれぞれ確認すること。
+
+## 6. BPに残す処理とC++が保持するデータ
+
+各WBPの`OnClicked`は**Blueprintで作る**。C++の`BeginPlay`はWidgetの生成・表示と入力設定を担当するが、元の`Btn_Start`等のクリックイベントをC++で登録しない。WBP/Mapはまだリポジトリに含まれていない。
+
+| WBP | ボタンのBlueprintイベント | C++の受け口 |
+| --- | --- | --- |
+| WBP_MainTitle | `Btn_Start.OnClicked` | `USampleGameInstance::GoToScreen(Game)` |
+| WBP_MainTitle | `Btn_ExitGame.OnClicked` | `ATitleController::RequestExitGame()` |
+| WBP_GameHUD | `Btn_GameClear.OnClicked` | `USampleGameInstance::GoToScreen(Ending)` |
+| WBP_Ending | `Btn_Finish.OnClicked` | `USampleGameInstance::GoToScreen(Opening)` |
+| WBP_PauseMenu | `Btn_Resume.OnClicked` | `AGameController::ResumeGame()` |
+| WBP_PauseMenu | `Btn_ReturnToTitle.OnClicked` | `AGameController::RequestReturnToTitle()` |
+| WBP_PauseMenu | `Btn_ExitGame.OnClicked` | `AGameController::RequestQuitGame()` |
+| WBP_ConfirmDialog | `Btn_Yes.OnClicked` / `Btn_No.OnClicked` | `USampleConfirmDialogWidget::ConfirmYes()` / `ConfirmNo()` |
+
+`USampleGameInstance`の`GameState`、`CurrentChapter`、`PlayerData`、`Settings`、`SaveData`は`UPROPERTY`としてBPへ公開済み。今回の等価版には`SetCurrentChapter`、`OnDataChanged`、`OnModelChanged`、自動Text更新の経路は**ない**。BPは必要なタイミングでプロパティを取得して表示に反映する。`CurrentChapter`自体は元のBPの将来拡張用の変数であり、現サンプルにチャプター進行機能はない。
+
+## 7. 確認が必要な点
+
+- `WBP_ConfirmDialog`のみ、C++の`USampleConfirmDialogWidget`を親にする。既存BPの同名Dispatcherを削除して新しい親のDispatcherにつなぎ直すこと。
+- 各WBPの`GetOwningPlayer`がそれぞれ対応するControllerを返すよう、正しいGameModeを各Mapで選択すること。
+- `SetupInputComponent`はエンジンが入力を初期化する際に呼び出す。`BeginPlay`の中に手動で挿入しないこと。
+- UI Focus中のEscやOpeningのAny Key、Widgetのクリック優先順位は**StandaloneとPIEで要実測**。現コードは旧C++案の`NativeOnPreviewKeyDown`によるキー消費を引き継いでいない。
+- ビルド前・実行前なので、**「完全等価」を実測済みとは主張しない**。受け入れ条件は[VALIDATION.md](VALIDATION.md)に従う。
+
+関連資料: [ARCHITECTURE.md](ARCHITECTURE.md) / [EDITOR_SETUP.md](EDITOR_SETUP.md) / [VALIDATION.md](VALIDATION.md)。

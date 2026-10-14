@@ -2,47 +2,46 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
-#include "SampleTypes.h"
 #include "SampleGameMode.generated.h"
 
-class USampleScreenWidget;
+// One-to-one translation of BP_GameModeBase and its four Blueprint children.
+UCLASS()
+class SCREENFLOW_API ASampleGameModeBase : public AGameModeBase
+{
+    GENERATED_BODY()
 
-UCLASS(Abstract, Blueprintable)
-class SCREENFLOW_API ASampleGameMode : public AGameModeBase
+public:
+    ASampleGameModeBase();
+};
+
+UCLASS()
+class SCREENFLOW_API AOpeningGameMode : public ASampleGameModeBase
 {
     GENERATED_BODY()
 public:
-    ASampleGameMode();
-    UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category="Sample") ESampleScreen Screen = ESampleScreen::Opening;
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Sample|UI") TSoftClassPtr<USampleScreenWidget> ScreenWidgetClass;
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Sample|UI") TSoftClassPtr<USampleScreenWidget> PauseWidgetClass;
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Sample|UI") TSoftClassPtr<USampleScreenWidget> ConfirmWidgetClass;
+    AOpeningGameMode();
 };
 
 UCLASS()
-class SCREENFLOW_API ASampleOpeningGameMode : public ASampleGameMode
+class SCREENFLOW_API AMainTitleGameMode : public ASampleGameModeBase
 {
     GENERATED_BODY()
-public: ASampleOpeningGameMode();
+public:
+    AMainTitleGameMode();
 };
 
 UCLASS()
-class SCREENFLOW_API ASampleTitleGameMode : public ASampleGameMode
+class SCREENFLOW_API AGameGameMode : public ASampleGameModeBase
 {
     GENERATED_BODY()
-public: ASampleTitleGameMode();
+public:
+    AGameGameMode();
 };
 
 UCLASS()
-class SCREENFLOW_API ASampleGameGameMode : public ASampleGameMode
+class SCREENFLOW_API AEndingGameMode : public ASampleGameModeBase
 {
     GENERATED_BODY()
-public: ASampleGameGameMode();
-};
-
-UCLASS()
-class SCREENFLOW_API ASampleEndingGameMode : public ASampleGameMode
-{
-    GENERATED_BODY()
-public: ASampleEndingGameMode();
+public:
+    AEndingGameMode();
 };
