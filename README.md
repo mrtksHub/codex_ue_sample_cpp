@@ -1,54 +1,45 @@
 # codex_ue_sample_cpp
 
-[codex_ue_sample](https://github.com/mrtksHub/codex_ue_sample)を参考にした、Unreal Engine 5.8の独立したC++サンプルです。
-**ゲーム管理はC++、画面の作り込みはWidget Blueprint**で行います。
+Unreal Engine 5.8 の [codex_ue_sample](https://github.com/mrtksHub/codex_ue_sample) を **設計変更せずにC++へ移す**ためのプロジェクトです。
+管理処理はC++、Widgetの外観・ボタンイベントはWidget Blueprintに残します。
 
-画面構成: **Opening → MainTitle → Game → Ending → MainTitle**
+## 参照元と同じ構成
 
-参照元はEndingからOpeningへ戻ります。本プロジェクトはタイトルへ戻る仕様です。
+- 画面: **Opening → MainTitle → Game → Ending → Opening**
+- 4 Map、4 GameMode、4 PlayerController、1 GameInstance、6 Widget Blueprint。
+- Controllerは共通化せず、4画面に対応するC++クラスを各々 APlayerController から直接派生させます。
+- 元のBlueprint版と同じく、GameModeが画面固有のControllerを選択します。
+- `GoToScreen`は遷移中フラグのみを確認し、遷移先は4画面のEnumから選びます。
+- 元のPause、Confirm、Esc優先順位、Focus、カーソル表示を維持します。
+- `CurrentChapter` / `PlayerData` / `Settings` / `SaveData` は元のBP_GameInstanceと同じメモリ上のデータです。
+
+## C++とBlueprintの境界
+
+| 処理 | C++ | Blueprint |
+| --- | --- | --- |
+| GameInstance画面状態・GoToScreen・NotifyScreenReady | USampleGameInstance | プロパティ参照と関数呼び出し |
+| GameModeのController選択 | ASampleGameModeBaseと4子クラス | なし |
+| BeginPlay、Widget生成、カーソルとFocus | 4つのController | Widgetのデザイン |
+| Title/Game/Endingボタン | 呼び先のC++関数 | WBP内のOnClickedグラフ |
+| Confirm結果のディスパッチ | USampleConfirmDialogWidgetで型を定義 | WBP_ConfirmDialogでYes/Noの発火 |
+| Pause・Confirm・Esc | ATitleController / AGameController | PauseMenuのボタンから呼び出し |
 
 ## 現在の状態
 
-**C++基盤とEditor導入手順を作成した段階です。まだ完成したUE実行サンプルではありません。**
+**GitHub上のC++ソースを更新した段階で、動作確認は未実施です。**
 
-- C++ソース、プロジェクト定義、設定を登録しています。
-- `.uasset` / `.umap` はまだ含まれていません。Editorで4 Mapと6 Widget Blueprintを作成してください。
-- この作業環境にはUnreal Engine / Unreal Editorがないため、UHT / C++ビルド・PIE・Standalone・パッケージ確認は未実施です。
-- 汎用の仮ゲーム画面を対象とします。テトリスなどの個別ゲーム処理はありません。
+- このリポジトリにはまだ `.uasset` / `.umap` がありません。
+- Editorで4つのMapと6つのWBPを作るか、元のDesignerを移す必要があります。
+- UE 5.8 UHT/C++ビルド、PIE、Standalone、Packagingは未確認です。
+- 元のBlueprintの詳細なノード接続は設計書を基準に移植しました。UE Editor内で最終照合してください。
 
-## 担当の分離
+導入手順: [docs/EDITOR_SETUP.md](docs/EDITOR_SETUP.md)
 
-| 領域 | 担当 |
-| --- | --- |
-| 現在画面、遷移の許可、連打防止、共通データ | `USampleGameInstance` |
-| 画面とWidgetクラスの対応、Pawnなしの設定 | `ASampleGameMode`と4つのC++子クラス |
-| 入力、UIの生成・破棄、Pause、終了確認、Focus | `ASamplePlayerController` |
-| ボタンの自動接続、データ変更の通知、キーの消費 | `USampleScreenWidget` |
-| 背景、文字、画像、ボタン配置、アニメーション | 6つのWidget Blueprint |
+クラスと処理対応: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-元のBP_GameInstanceやControllerの管理グラフはコピーしません。
-Widgetのボタンは名前によってC++から自動接続されるため、通常はOnClickedグラフも不要です。
-
-## 最初に行うこと
-
-1. このリポジトリをWindowsのUE 5.8環境へcloneする。
-2. Visual StudioのUE用C++開発環境とWindows SDKを用意する。
-3. `.uproject`からプロジェクトファイルを生成し、`codex_ue_sample_cppEditor`をDevelopment Editor / Win64でビルドする。
-4. [Editor導入手順](docs/EDITOR_SETUP.md)に従いMapとWidget Blueprintを作成する。
-5. [動作確認項目](docs/VALIDATION.md)に従ってStandaloneで確認する。
-
-詳細な責務とBlueprint接続方法: [設計](docs/ARCHITECTURE.md)
-
-## 主な操作
-
-- Opening: キーまたは画面クリック → MainTitle
-- MainTitle: Start → Game、Exit Game / Esc → 終了確認
-- Game: Game Clear → Ending、Esc → Pause Menu
-- Pause Menu: Resume、Return to Title、Exit Game
-- Confirm Dialog: Yesで実行、No / Escでキャンセル
-- Ending: Finish → MainTitle
+確認項目: [docs/VALIDATION.md](docs/VALIDATION.md)
 
 ## License
 
-MIT License。参照元の著作権表記を[LICENSE](LICENSE)に保持しています。
-Unreal EngineおよびEpic Gamesや第三者が提供するアセットには、それぞれの利用条件が適用されます。
+MIT License。原著作権表示は [LICENSE](LICENSE) を参照してください。
+Unreal Engineや第三者アセットにはそれぞれのライセンスが適用されます。
