@@ -1,6 +1,7 @@
 # UE 5.8 Editor 導入とBlueprint接続
 
 本リポジトリはC++コードのみ。4 Mapと6 Widget Blueprintはまだ含まれていません。
+ソースと関数の呼び出し順は [CALL_FLOW.md](CALL_FLOW.md) にまとめています。
 元のBlueprint版と同じ名前・レイアウトのアセットを新規作成するか、元のDesignerをMigrateしてください。
 
 ## 1. ビルド
@@ -52,7 +53,8 @@ WidgetのEvent OnClickedは従来どおりWBPに記述し、C++はその呼び�
 - Title通常時: Btn_Start / Confirm時: Btn_No。
 - Game通常時: Btn_GameClear / Pause時: Btn_Resume / Confirm時: Btn_No。
 - Ending: Btn_Finish。すべてFocusableにする。
-- EscはTitleControllerとGameControllerが処理し、Pause中も入力可能。
+- EscはTitleControllerとGameControllerの`SetupInputComponent()`で登録し、Gameでは`bExecuteWhenPaused=true`とする。
+- **ただし**UIのボタンがFocusを持つ場合にEsc/Any Keyが入力バインドまで届くかは、Standaloneで必ず実測する。現構成には旧C++案の`NativeOnPreviewKeyDown`転送機構がない。
 - PIEはEscがEditor Stop Playに奪われる場合があるためStandaloneで確認する。
 
 ## 5. 実行と保存
@@ -64,3 +66,4 @@ WidgetのEvent OnClickedは従来どおりWBPに記述し、C++はその呼び�
 5. Content配下のMapとWBPをSaveしてGitへcommit。
 
 操作ごとの受け入れ条件は [VALIDATION.md](VALIDATION.md)。
+動作確認時は [CALL_FLOW.md](CALL_FLOW.md) のC++関数とUEのイベント境界を照合する。
